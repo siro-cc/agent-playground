@@ -2,7 +2,9 @@ from typing import Optional, Union
 
 from fastapi import FastAPI
 
+from app.agent import run_agent
 from app.config import get_settings
+from app.schemas import ChatRequest, ChatResponse
 
 
 settings = get_settings()
@@ -33,7 +35,15 @@ def ready() -> dict[str, str]:
     }
 
 
-@app.post("/chat")
-def chat() -> dict[str, str]:
-    return {"message": "agent playground is running"}
-
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    try:
+        return run_agent(request.question)
+    except Exception as exc:
+        return ChatResponse(
+            question=request.question,
+            tool_used=None,
+            tool_result=None,
+            final_answer=None,
+            error=str(exc),
+        )
