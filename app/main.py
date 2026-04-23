@@ -1,3 +1,5 @@
+from typing import Optional, Union
+
 from fastapi import FastAPI
 
 from app.config import get_settings
@@ -30,6 +32,8 @@ def ready() -> dict[str, str]:
         "environment": settings.app_env,
     }
 
+
 @app.post("/chat")
 def chat() -> dict[str, str]:
     return {"message": "agent playground is running"}
+
