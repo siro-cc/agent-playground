@@ -123,3 +123,108 @@ def search_runbook(keyword: str) -> Dict[str, Any]:
         "documents": matched_docs,
         "count": len(matched_docs),
     }
+
+
+def query_alerts(service_name: str) -> Dict[str, Any]:
+    service_name = (service_name or "").strip()
+    if not service_name:
+        raise ValueError("service_name 不能为空")
+
+    mock_alerts: Dict[str, List[Dict[str, Any]]] = {
+        "user-service": [
+            {
+                "severity": "critical",
+                "alert_name": "High5xxRate",
+                "summary": "5xx 错误率持续 5 分钟超过阈值",
+            },
+            {
+                "severitiy": "warning",
+                "alert_name": "PodRestartSpike",
+                "summary": "Pod 重启次数异常升高",
+            },
+        ],
+        "payment-service": [
+            {
+                "severity": "warning",
+                "alert_name": "HighLatency",
+                "summary": "P95 延迟高于阈值",
+            }
+        ],
+    }
+
+    alerts = mock_alerts.get(service_name, [])
+
+    return {
+        "service_name": service_name,
+        "count": len(alerts),
+        "alerts": alerts,
+    }
+
+
+def get_recent_changes(service_name: str) -> Dict[str, Any]:
+    service_name = (service_name or "").strip()
+    if not service_name:
+        raise ValueError("service_name 不能为空")
+
+    mock_changes = {
+        "user-service": [
+            {
+                "type": "deployment",
+                "time": "2026-04-24 20:15:00",
+                "summary": "镜像从 v1.3.1 升级到 v1.3.2",
+            },
+            {
+                "type": "config",
+                "time": "2026-04-24 19:40:00",
+                "summary": "更新了数据库连接池配置",
+            },
+        ],
+        "payment-service": [
+            {
+                "type": "config",
+                "time": "2026-04-24 18:00:00",
+                "summary": "调整了 Redis 超时参数",
+            }
+        ],
+    }
+
+    changes = mock_changes.get(service_name, [])
+    return {
+        "service_name": service_name,
+        "count": len(changes),
+        "changes": changes,
+    }
+
+
+def query_service_status(service_name: str) -> Dict[str, Any]:
+    service_name = (service_name or "").strip()
+    if not service_name:
+        raise ValueError("service_name 不能为空")
+
+    mock_status = {
+        "user-service": {
+            "service_name": "user_service",
+            "status": "degraded",
+            "replicas": 3,
+            "ready_replicas": 2,
+            "message": "1 个实例未就绪,可能影响部分请求",
+        },
+        "payment-service": {
+            "service_name": "payment-service",
+            "status": "healthy",
+            "replicas": 2,
+            "ready_replicas": 2,
+            "message": "",
+        },
+    }
+    
+    return mock_status.get(
+        service_name,
+        {
+            "service_name": service_name,
+            "status": "unknown",
+            "replicas": 0,
+            "ready_replicas": 0,
+            "message": "未找到该服务状态信息",
+        },
+    )
