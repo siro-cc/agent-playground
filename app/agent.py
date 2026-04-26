@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List
 
 from openai import OpenAI
 
@@ -125,6 +125,12 @@ def _get_client() -> OpenAI:
         base_url=settings.openai_base_url,
     )
 
+def _extract_tool_calls(response:Any)->List[Any]:
+    output = getattr(response,"output",[]) or []
+    return [
+        item for item in output
+        if getattr(item,"type",None)=="function_call"
+    ]
 
 def _execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     tool = TOOL_REGISTRY.get(name)
@@ -157,19 +163,20 @@ def run_agent(question: str) -> ChatResponse:
         tools=TOOLS,
         parallel_tool_calls=False,
     )
-    tool_calls = [
-        item
-        for item in first_response.output
-        if getattr(item, "type", None) == "function_call"
-    ]
+    tool_calls = _extract_tool_calls(first_response)
 
     if not tool_calls:
         logger.info("模型未调用工具,直接返回答案")
+        final_answer = first_response.output_text or "当前没有生成可用回答"
+
+        if not final_answer.strip():
+            final_answer = "目前信息不足，请补充集群名称、服务名称、故障现象或最近变更信息"
+
         return ChatResponse(
             question=question,
             tool_used=None,
             tool_result=None,
-            final_answer=first_response.output_text or "当前没有生成可用回答",
+            final_answer=final_answer,
             error=None,
         )
     tool_call = tool_calls[0]
