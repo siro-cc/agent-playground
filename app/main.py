@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.agent import run_agent, run_agent_flow
 from app.config import get_settings
+from app.flow_engine import run_flow_pipeline
 from app.schemas import ChatRequest, ChatResponse
 
 
@@ -52,4 +53,10 @@ def chat(request: ChatRequest) -> ChatResponse:
 @app.post("/flow")
 def flow(request:ChatRequest)->Dict:
     state= run_agent_flow(request.question)
+    return state.model_dump()
+
+
+@app.post("/flow-v2")
+def flow_v2_chat(request: ChatRequest) -> Dict:
+    state = run_flow_pipeline(request.question)
     return state.model_dump()
