@@ -1,4 +1,12 @@
+import re
 from typing import Any, Dict, List
+
+
+def normalize_text(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[？?！!，。,\.]", "", text)
+    return text
 
 
 def get_cluster_status(cluster_name: str) -> Dict[str, Any]:
@@ -103,10 +111,14 @@ def search_runbook(keyword: str) -> Dict[str, Any]:
         },
     ]
     keyword_lower = keyword.lower()
+
+    normalized_keyword = normalize_text(keyword_lower)
     matched_docs = []
+
     for doc in runbook_library:
         matched = any(
-            k.lower() in keyword_lower or keyword_lower in k.lower()
+            normalize_text(k) in normalized_keyword
+            or normalized_keyword in normalize_text(k)
             for k in doc["match_keywords"]
         )
         if matched:
@@ -217,7 +229,7 @@ def query_service_status(service_name: str) -> Dict[str, Any]:
             "message": "",
         },
     }
-    
+
     return mock_status.get(
         service_name,
         {

@@ -1,8 +1,8 @@
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 from fastapi import FastAPI
 
-from app.agent import run_agent
+from app.agent import run_agent, run_agent_flow
 from app.config import get_settings
 from app.schemas import ChatRequest, ChatResponse
 
@@ -47,3 +47,9 @@ def chat(request: ChatRequest) -> ChatResponse:
             final_answer=None,
             error=str(exc),
         )
+
+
+@app.post("/flow")
+def flow(request:ChatRequest)->Dict:
+    state= run_agent_flow(request.question)
+    return state.model_dump()
