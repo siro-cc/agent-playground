@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable
 
 from openai import OpenAI
 
@@ -108,7 +108,7 @@ TOOLS = [
     },
 ]
 
-TOOL_REGISTRY: Dict[str, Callable[..., Dict[str, Any]]] = {
+TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
     "get_cluster_status": get_cluster_status,
     "search_runbook": search_runbook,
     "query_alerts": query_alerts,
@@ -128,12 +128,12 @@ def _get_client() -> OpenAI:
     )
 
 
-def _extract_tool_calls(response: Any) -> List[Any]:
+def _extract_tool_calls(response: Any) -> list[Any]:
     output = getattr(response, "output", []) or []
     return [item for item in output if getattr(item, "type", None) == "function_call"]
 
 
-def _execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def _execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     tool = TOOL_REGISTRY.get(name)
     if tool is None:
         raise ValueError(f"未知工具:{name}")
@@ -177,12 +177,7 @@ def classify_intent(question: str) -> str:
     ):
         return "runbook"
 
-    if (
-        "状态" in q
-        or "副本" in q
-        or "正常吗" in q
-        or "健康吗" in q
-    ):
+    if "状态" in q or "副本" in q or "正常吗" in q or "健康吗" in q:
         return "service_status"
 
     return "unknown"
@@ -321,66 +316,112 @@ def choose_tool_by_intent(intent: str) -> str | None:
     }
     return mapping.get(intent)
 
-def run_agent_flow(question:str)->AgentState:
+
+def extract_cluster_name(question: str) -> str | None:
+    q = question.lower()
+
+    match = re.search(r"\b(cluster[-a-z0-9]+)\b", q)
+    if match:
+        return match.group(1)
+
+    if "test-cluster" in q:
+        return "test-cluster"
+
+    return None
+
+
+def extract_service_name(question: str) -> str | None:
+    q = question.lower()
+    match = re.search(r"\b([a-z0-9-]+-service)\b", q)
+    if match:
+        return match.group(1)
+
+    if "user-service" in q:
+        return "user-service"
+    if "payment-service" in q:
+        return "payment-service"
+
+    return None
+
+
+def build_tool_args(tool_name: str, question: str) -> dict:
+    if tool_name == "get_cluster_status":
+        cluster_name = extract_cluster_name(question)
+        if cluster_name:
+            return {"cluster_name": cluster_name}
+        return {"cluster_name": "test-cluster"}
+
+    if tool_name in ["query_alerts", "get_recent_changes", "query_service_status"]:
+        service_name = extract_service_name(question)
+        if service_name:
+            return {"service_name": service_name}
+        return {"service_name": "user-service"}
+
+    if tool_name == "search_runbook":
+        return {"keyword": question}
+
+    return {}
+
+
+def run_agent_flow(question: str) -> AgentState:
     question = (question or "").strip()
     state = AgentState(question=question)
     if not question:
-        state.error="question 不能为空"
+        state.error = "question 不能为空"
         return state
-    
+
     intent = classify_intent(question=question)
-    state.intent=intent
-    tool_name=choose_tool_by_intent(intent=intent)
+    state.intent = intent
+    tool_name = choose_tool_by_intent(intent=intent)
     if not tool_name:
-        state.final_answer = "目前信息不足，请补充集群名称、服务名称、故障现象或最近变更信息。"
+        state.final_answer = (
+            "目前信息不足，请补充集群名称、服务名称、故障现象或最近变更信息。"
+        )
         state.next_action = "补充更具体的问题背景"
         return state
-    
+
     state.tool_used = tool_name
-    
-    if tool_name == "get_cluster_status":
-        state.tool_args={"cluster_name":"test-cluster"}
-    elif tool_name in ["query_alerts", "get_recent_changes", "query_service_status"]:
-        state.tool_args = {"service_name": "user-service"}
-    elif tool_name == "search_runbook":
-        state.tool_args = {"keyword": question}
-    else:
-        state.tool_args = {}
-        
+    state.tool_args = build_tool_args(tool_name, question)
+
     try:
-        state.tool_result =_execute_tool(tool_name,state.tool_args)
+        state.tool_result = _execute_tool(tool_name, state.tool_args)
     except Exception as exc:
-        state.error=f"工具执行失败:{str(exc)}"
+        state.error = f"工具执行失败:{str(exc)}"
         return state
-    
+
     state.final_answer = build_final_answer(state)
     state.next_action = suggest_next_action(state)
-    
+
     return state
 
-def build_final_answer(state:AgentState)->str:
+
+def build_final_answer(state: AgentState) -> str:
     if state.error:
         return state.error
-    
-    if state.tool_used=="get_cluster_status":
-        status=state.tool_result.get("status")
-        warning =state.tool_result.get("warning") or "无明显告警"
-        return f"当前集群状态为:{status} 补充信息:{warning}"
-    
-    if state.tool_used=="query_service_status":
+
+    if state.tool_used == "get_cluster_status":
         status = state.tool_result.get("status")
-        replicas=state.tool_result.get("replicas")
+        warning = state.tool_result.get("warning") or "无明显告警"
+        cluster_name = state.tool_result.get("cluster_name")
+        return f"集群 {cluster_name} 当前状态为 {status}。依据：{warning}"
+
+    if state.tool_used == "query_service_status":
+        status = state.tool_result.get("status")
+        replicas = state.tool_result.get("replicas")
         ready = state.tool_result.get("ready_replicas")
+        service_name = state.tool_result.get("service_name")
         message = state.tool_result.get("message") or "无额外说明"
-        return f"服务当前状态为:{status},副本{ready}/{replicas}就绪.补充信息:{message}"
-    
+        return f"服务 {service_name} 当前状态为 {status}，就绪副本 {ready}/{replicas}。依据：{message}"
+
     if state.tool_used == "query_alerts":
         count = state.tool_result.get("count", 0)
-        return f"当前共查询到 {count} 条告警。"
+        service_name = state.tool_result.get("service_name")
+        return f"服务 {service_name} 当前共查询到 {count} 条告警。"
 
     if state.tool_used == "get_recent_changes":
         count = state.tool_result.get("count", 0)
-        return f"最近共发现 {count} 条变更记录。"
+        service_name = state.tool_result.get("service_name")
+        return f"服务 {service_name} 最近共发现 {count} 条变更记录。"
 
     if state.tool_used == "search_runbook":
         matched = state.tool_result.get("matched")
@@ -390,16 +431,17 @@ def build_final_answer(state:AgentState)->str:
 
     return "暂时无法生成结论。"
 
-def suggest_next_action(state:AgentState)->str:
+
+def suggest_next_action(state: AgentState) -> str:
     if state.error:
         return "先修复错误后再继续"
-    
-    if state.tool_used=="get_cluster_status":
-        if state.tool_result.get("status")=="healthy":
+
+    if state.tool_used == "get_cluster_status":
+        if state.tool_result.get("status") == "healthy":
             return "继续观察,无需立即处理"
-        
+
         return "优先检查异常节点 控制面或集群事件"
-    
+
     if state.tool_used == "query_service_status":
         if state.tool_result.get("status") == "healthy":
             return "继续观察服务监控和告警"
