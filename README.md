@@ -25,6 +25,16 @@ Minimal FastAPI project managed with `uv`.
 - 减少工具参数硬编码默认值
 - Week 3 flow 评测准确率提升
 
+## Week 4 Progress
+
+- 新增节点化流程引擎 flow_engine.py
+- 新增节点文件 flow_nodes.py
+- 状态对象新增 current_stage / requires_approval / approved
+- history 从字符串列表升级为结构化阶段记录
+- 新增 approval_gate_node 占位
+- 新增 /flow-v3 接口
+- 新增阻断型流程测试
+
 ## Configuration
 
 The app loads configuration from `.env`.

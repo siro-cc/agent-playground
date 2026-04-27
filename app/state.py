@@ -3,6 +3,12 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
+class StageRecord(BaseModel):
+    stage: str
+    status: str
+    detail: Optional[str] = None
+
+
 class AgentState(BaseModel):
     question: str
     current_stage: str = "start"
@@ -16,4 +22,7 @@ class AgentState(BaseModel):
     next_action: Optional[str] = None
     error: Optional[str] = None
 
-    history: list[str] = Field(default_factory=list)
+    requires_approval: bool = False
+    approved: bool = False
+
+    history: list[StageRecord] = Field(default_factory=list)

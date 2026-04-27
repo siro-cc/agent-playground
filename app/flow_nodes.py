@@ -1,4 +1,4 @@
-from app.state import AgentState
+from app.state import AgentState, StageRecord
 from app.tools import (
     get_cluster_status,
     get_recent_changes,
@@ -181,59 +181,100 @@ def suggest_next_action(state: AgentState) -> str:
     return "补充更多上下文"
 
 
+def add_stage_record(
+    state: AgentState, stage: str, status: str, detail: str | None = None
+) -> None:
+    state.history.append(
+        StageRecord(
+            stage=stage,
+            status=status,
+            detail=detail,
+        )
+    )
+    return None
+
+
 def classify_intent_node(state: AgentState) -> AgentState:
     state.current_stage = "classify_intent"
-    state.history.append(state.current_stage)
     state.intent = classify_intent(state.question)
+    add_stage_record(state, state.current_stage, "success", f"intent={state.intent}")
 
     return state
 
 
 def choose_tool_node(state: AgentState) -> AgentState:
     state.current_stage = "choose_tool"
-    state.history.append(state.current_stage)
     state.tool_used = choose_tool_by_intent(state.intent)
+    add_stage_record(state, state.current_stage, "success", f"tool={state.tool_used}")
     return state
 
 
 def build_tool_args_node(state: AgentState) -> AgentState:
     state.current_stage = "build_tool_args"
-    state.history.append(state.current_stage)
 
     if not state.tool_used:
+        add_stage_record(state, state.current_stage, "skipped", "no tool selected")
         return state
 
     state.tool_args = build_tool_args(state.tool_used, state.question)
+
+    add_stage_record(state, state.current_stage, "success", f"args={state.tool_args}")
+
     return state
 
 
 def execute_tool_node(state: AgentState) -> AgentState:
     state.current_stage = "execute_tool"
-    state.history.append(state.current_stage)
 
     if not state.tool_used:
+        add_stage_record(state, state.current_stage, "skipped", "no tool selected")
         return state
 
     try:
         tool = TOOL_REGISTRY[state.tool_used]
         state.tool_result = tool(**state.tool_args)
+        add_stage_record(
+            state, state.current_stage, "success", f"tool_result={state.tool_result}"
+        )
+
     except Exception as exc:
         state.error = f"工具执行失败:{str(exc)}"
+        add_stage_record(state, state.current_stage, "error", state.error)
 
     return state
 
 
 def build_response_node(state: AgentState) -> AgentState:
     state.current_stage = "build_response"
-    state.history.append(state.current_stage)
 
     if not state.tool_used:
         state.final_answer = (
             "目前信息不足,请补充集群名称 服务名称 故障现象或最近变更信息"
         )
         state.next_action = "补充更具体的问题背景"
+        add_stage_record(state, state.current_stage, "success", "no tool path")
+
         return state
 
     state.final_answer = build_final_answer(state)
     state.next_action = suggest_next_action(state)
+    add_stage_record(state, state.current_stage, "success", "response generated")
+    return state
+
+
+def approval_gate_node(state: AgentState) -> AgentState:
+    state.current_stage = "approval_gate"
+    high_risk_tools = {"get_recent_changes"}
+    if state.tool_used in high_risk_tools:
+        state.requires_approval = True
+
+    if state.requires_approval and not state.approved:
+        add_stage_record(state, state.current_stage, "blocked", "approval required")
+        state.final_answer = "当前操作需要人工确认后才能继续"
+        state.next_action = "请先完成审批,再重新执行流程"
+        return state
+
+    add_stage_record(
+        state, state.current_stage, "success", "approval passed or not required"
+    )
     return state

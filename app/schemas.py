@@ -7,6 +7,11 @@ class ChatRequest(BaseModel):
     question: str = Field(..., description="用户输入的问题")
 
 
+class FlowRequest(BaseModel):
+    question: str
+    approved: bool = False
+
+
 class ChatResponse(BaseModel):
     question: str
     tool_used: Optional[str] = None
